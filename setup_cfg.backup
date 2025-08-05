@@ -1,0 +1,78 @@
+[metadata]
+name = httpx-html
+version = attr: httpx_html.__version__"
+author = Kenneth Reitz
+author_email = me@kennethreitz.org
+maintainer = Nuno André
+maintainer_email = mail@nunoand.re
+description = Web Scraping for Humans.
+long_description = file: README.rst
+license = MIT
+license_files = LICENSE
+url = https://github.com/nuno-andre/httpx-html
+project_urls =
+    Source = https://github.com/nuno-andre/httpx-html
+    Bug Tracker = https://github.com/nuno-andre/httpx-html/issues
+classifiers =
+    License :: OSI Approved :: MIT License
+    Operating System :: OS Independent
+    Programming Language :: Python
+    Programming Language :: Python :: 3.10
+    Programming Language :: Python :: 3.11
+    Programming Language :: Python :: 3.12
+    Programming Language :: Python :: 3.13
+
+    Programming Language :: Python :: Implementation :: CPython
+    Programming Language :: Python :: Implementation :: PyPy
+    Typing :: Typed
+platforms = any
+
+[options]
+zip_safe = false
+python_requires = >= 3.10.0
+install_requires =
+    httpx >= 0.18
+    pyquery
+    fake-useragent
+    parse
+    beautifulsoup4
+    w3lib
+    pyppeteer >= 0.0.14
+    rfc3986
+include_package_data = true
+package_dir =
+    =src
+packages = find:
+cmdclass =
+    upload = setup.UploadCommand
+    docs = setup.MakeDocsCommand
+
+[options.packages.find]
+where = src
+
+[options.package_data]
+httpx_html =
+    py.typed
+
+[options.extras_require]
+tests =
+    pytest
+    pytest-asyncio
+    httpx-file
+docs =
+    sphinx
+dev =
+    mypy
+    flake8
+
+[flake8]
+max-complexity = 14
+max-line-length = 99
+inline-quotes = single
+multiline-quotes = single
+docstring-quotes = single
+
+[tool:pytest]
+markers =
+    render: marks tests for html render
+    internet: marks tests which runs on internet pages
