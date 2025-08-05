@@ -7,6 +7,7 @@ import httpx
 import pyppeteer
 from fake_useragent import UserAgent
 
+from .browser_manager import BrowserManager
 from .constants import DEFAULT_ENCODING, DEFAULT_USER_AGENT
 from .parse_ import HTML
 
@@ -74,15 +75,16 @@ class BaseSession(httpx.Client):
     ) -> None:
         super().__init__(**kwargs)
 
-        self._browser = None
+        # Initialize browser manager
         browser_args = ["--no-sandbox"] if not browser_args else browser_args
+        self._browser_manager = BrowserManager(verify=verify, browser_args=browser_args)
+        
         # mock a web browser's user agent
         if mock_browser:
             self.headers["User-Agent"] = user_agent()
 
         self.verify = verify
         self.follow_redirects = True
-        self.__browser_args = browser_args
 
         if proxies:
             # fix requests-style proxy declaration
@@ -102,14 +104,9 @@ class BaseSession(httpx.Client):
     @property
     async def browser(self) -> "pyppeteer.Browser":
         """
-        Generates pyppeteer.Browser is `_browser` is not set.
+        Returns pyppeteer.Browser instance, creating it if necessary.
         """
-        if not hasattr(self, "_browser"):
-            self._browser = await pyppeteer.launch(
-                ignoreHTTPSErrors=not self.verify, headless=True, args=self.__browser_args
-            )
-
-        return self._browser
+        return await self._browser_manager.get_browser()
 
 
 class HTMLSession(BaseSession):
@@ -134,22 +131,15 @@ class HTMLSession(BaseSession):
     @property
     def browser(self) -> "pyppeteer.Browser":
         """
-        Property for `_browser` attribute.
+        Property for browser access in synchronous context.
         """
-        if not hasattr(self, "_browser"):
-            self.loop = asyncio.get_event_loop()
-            if self.loop.is_running():
-                raise RuntimeError(
-                    "Cannot use HTMLSession within an existing event loop. "
-                    "Use AsyncHTMLSession instead."
-                )
-            self._browser = self.loop.run_until_complete(super().browser)
-        return self._browser
+        self.loop = asyncio.get_event_loop()
+        return self._browser_manager.get_browser_sync(self.loop)
 
     def close(self) -> None:
         """If a browser was created close it first."""
-        if hasattr(self, "_browser"):
-            self.loop.run_until_complete(self._browser.close())
+        if self._browser_manager.has_browser:
+            self._browser_manager.close_browser_sync(self.loop)
         super().close()
 
 
@@ -195,8 +185,7 @@ class AsyncHTMLSession(BaseSession):
 
     async def close(self) -> None:
         """If a browser was created close it first."""
-        if hasattr(self, "_browser"):
-            await self._browser.close()
+        await self._browser_manager.close_browser()
         super().close()
 
     def run(self, *coros):

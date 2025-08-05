@@ -25,6 +25,7 @@ from .constants import (
     DEFAULT_RENDER_TIMEOUT,
     DEFAULT_RENDER_SLEEP,
 )
+from .cookie_handler import CookieHandler
 from .render_config import RenderConfig
 
 if TYPE_CHECKING:
@@ -610,58 +611,9 @@ class HTML(BaseParser):
             page = None
             return None
 
-    def _convert_cookiejar_to_render(
-        self,
-        session_cookiejar,
-    ) -> "_CookieRender":
-        """
-        Convert HTMLSession.cookies:cookiejar[] for browser.newPage().setCookie
-        """
-        # |  setCookie(self, *cookies:dict) -> None
-        # |      Set cookies.
-        # |
-        # |      ``cookies`` should be dictionaries which contain these fields:
-        # |
-        # |      * ``name`` (str): **required**
-        # |      * ``value`` (str): **required**
-        # |      * ``url`` (str)
-        # |      * ``domain`` (str)
-        # |      * ``path`` (str)
-        # |      * ``expires`` (number): Unix time in seconds
-        # |      * ``httpOnly`` (bool)
-        # |      * ``secure`` (bool)
-        # |      * ``sameSite`` (str): ``'Strict'`` or ``'Lax'``
-        cookie_render = {}
-
-        def __convert(cookiejar, key):
-            try:
-                v = getattr(cookiejar, key, None)
-                kv = "" if not v else {key: v}
-            except Exception:
-                kv = ""
-            return kv
-
-        keys = [
-            "name",
-            "value",
-            "url",
-            "domain",
-            "path",
-            "sameSite",
-            "expires",
-            "httpOnly",
-            "secure",
-        ]
-        for key in keys:
-            cookie_render.update(__convert(session_cookiejar, key))
-        return cookie_render
-
     def _convert_cookiesjar_to_render(self) -> list["_CookieRender"]:
         """Convert ``HTMLSession.cookies`` for ``browser.newPage().setCookie``."""
-        if isinstance(self.session.cookies, http.cookiejar.CookieJar):
-            return [self._convert_cookiejar_to_render(c) for c in self.session.cookies]
-
-        return []
+        return CookieHandler.convert_session_cookies_to_render(self.session.cookies)
 
     async def _render_common_async(self, config: RenderConfig):
         """Common async rendering logic shared between render() and arender().
