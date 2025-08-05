@@ -63,6 +63,7 @@ maintainers = [
 ]
 description = "Web Scraping for Humans."
 license = { file = "LICENSE" }
+requires-python = ">=3.11"
 classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
