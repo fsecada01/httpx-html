@@ -3,6 +3,8 @@
 import asyncio
 from typing import TYPE_CHECKING, Optional
 
+from .exceptions import BrowserLaunchError, EventLoopError
+
 if TYPE_CHECKING:
     import pyppeteer
 
@@ -64,7 +66,7 @@ class BrowserManager:
             RuntimeError: If called from within a running event loop
         """
         if loop.is_running():
-            raise RuntimeError(
+            raise EventLoopError(
                 "Cannot use synchronous browser access within an existing event loop. "
                 "Use get_browser() instead."
             )

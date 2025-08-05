@@ -26,7 +26,9 @@ from .constants import (
     DEFAULT_RENDER_SLEEP,
 )
 from .cookie_handler import CookieHandler
+from .exceptions import MaxRetriesExceeded
 from .render_config import RenderConfig
+from .utils import get_first_or_list
 
 if TYPE_CHECKING:
     from .session import BaseSession
@@ -49,12 +51,6 @@ cleaner = Cleaner()
 cleaner.javascript = True
 cleaner.style = True
 
-
-class MaxRetries(Exception):
-    """ """
-
-    def __init__(self, message):
-        self.message = message
 
 
 class BaseParser:
@@ -237,7 +233,7 @@ class BaseParser:
                 element.raw_html = lxml_html_tostring(cleaner.clean_html(element.lxml))
                 elements.append(element)
 
-        return _get_first_or_list(elements, first)
+        return get_first_or_list(elements, first)
 
     def xpath(
         self,
@@ -287,7 +283,7 @@ class BaseParser:
                 element.raw_html = lxml_html_tostring(cleaner.clean_html(element.lxml))
                 elements.append(element)
 
-        return _get_first_or_list(elements, first)
+        return get_first_or_list(elements, first)
 
     def search(self, template: str) -> Result:
         """Search the :class:`Element <Element>` for the given Parse template.
@@ -660,7 +656,7 @@ class HTML(BaseParser):
                 break
 
         if not content:
-            raise MaxRetries("Unable to render the page. Try increasing timeout.")
+            raise MaxRetriesExceeded("Unable to render the page. Try increasing timeout.", config.retries)
             
         # Update HTML content
         html = HTML(
@@ -797,11 +793,4 @@ class HTML(BaseParser):
         return await self._render_common_async(config)
 
 
-def _get_first_or_list(lst, first=False):
-    if first:
-        try:
-            return lst[0]
-        except IndexError:
-            return None
-    else:
-        return lst
+# _get_first_or_list moved to utils.py

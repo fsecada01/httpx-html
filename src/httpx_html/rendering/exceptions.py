@@ -1,8 +1,6 @@
 """Rendering-related exceptions."""
 
+# Re-export from main exceptions module for backward compatibility
+from ..exceptions import MaxRetriesExceeded as MaxRetries
 
-class MaxRetries(Exception):
-    """Raised when maximum render retries are exhausted."""
-
-    def __init__(self, message):
-        self.message = message
+__all__ = ["MaxRetries"]
