@@ -9,12 +9,23 @@ import lxml
 from lxml import etree
 from lxml.html import HtmlElement
 from lxml.html import tostring as lxml_html_tostring
-from lxml.html.clean import Cleaner
+from lxml_html_clean import Cleaner
 from lxml.html.soupparser import fromstring as soup_parse
 from parse import Result, findall
 from parse import search as parse_search
 from pyquery import PyQuery
 from w3lib.encoding import html_to_unicode
+
+from .constants import (
+    DEFAULT_ENCODING,
+    DEFAULT_URL,
+    DEFAULT_NEXT_SYMBOL,
+    DEFAULT_RENDER_RETRIES,
+    DEFAULT_RENDER_WAIT,
+    DEFAULT_RENDER_TIMEOUT,
+    DEFAULT_RENDER_SLEEP,
+)
+from .render_config import RenderConfig
 
 if TYPE_CHECKING:
     from .session import BaseSession
@@ -32,10 +43,6 @@ if TYPE_CHECKING:
     _Text = NewType("_Text", str)
     _Url = NewType("_Url", str)
     _XPath = Union[list[str], list["Element"], str, "Element"]
-
-DEFAULT_ENCODING = "utf-8"
-DEFAULT_URL = "https://example.org/"
-DEFAULT_NEXT_SYMBOL = ["next", "more", "older"]
 
 cleaner = Cleaner()
 cleaner.javascript = True
@@ -628,7 +635,7 @@ class HTML(BaseParser):
 
         def __convert(cookiejar, key):
             try:
-                v = eval(f"cookiejar.{key}")
+                v = getattr(cookiejar, key, None)
                 kv = "" if not v else {key: v}
             except Exception:
                 kv = ""
@@ -656,15 +663,73 @@ class HTML(BaseParser):
 
         return []
 
+    async def _render_common_async(self, config: RenderConfig):
+        """Common async rendering logic shared between render() and arender().
+        
+        Args:
+            config: RenderConfig object with all rendering parameters
+            
+        Returns:
+            tuple: (content, result, page) or None if rendering failed
+        """
+        cookies = config.cookies if config.cookies else [{}]
+        
+        # automatically set reload to False, if example URL is being used
+        reload = config.reload
+        if self.url == DEFAULT_URL:
+            reload = False
+
+        if config.send_cookies_session:
+            cookies = self._convert_cookiesjar_to_render()
+
+        content = None
+        result = None
+        page = None
+        
+        for _i in range(config.retries):
+            if not content:
+                try:
+                    content, result, page = await self._async_render(
+                        url=self.url,
+                        script=config.script,
+                        sleep=config.sleep,
+                        wait=config.wait,
+                        content=self.html,
+                        reload=reload,
+                        scrolldown=config.scrolldown,
+                        timeout=config.timeout,
+                        wait_until=config.wait_until,
+                        keep_page=config.keep_page,
+                        cookies=cookies,
+                    )
+                except TypeError:
+                    pass
+            else:
+                break
+
+        if not content:
+            raise MaxRetries("Unable to render the page. Try increasing timeout.")
+            
+        # Update HTML content
+        html = HTML(
+            url=self.url, 
+            html=content.encode(DEFAULT_ENCODING), 
+            default_encoding=DEFAULT_ENCODING
+        )
+        self.__dict__.update(html.__dict__)
+        self.page = page
+        
+        return result
+
     def render(
         self,
-        retries: int = 8,
+        retries: int = DEFAULT_RENDER_RETRIES,
         script: str = None,
-        wait: float = 0.2,
+        wait: float = DEFAULT_RENDER_WAIT,
         scrolldown: bool = False,
-        sleep: int = 0,
+        sleep: int = DEFAULT_RENDER_SLEEP,
         reload: bool = True,
-        timeout: float | int = 8.0,
+        timeout: float | int = DEFAULT_RENDER_TIMEOUT,
         wait_until: str | list[str] = None,
         keep_page: bool = False,
         cookies: list[dict] | None = None,
@@ -722,111 +787,62 @@ class HTML(BaseParser):
         Warning: the first time you run this method, it will download
         Chromium into your home directory (``~/.pyppeteer``).
         """
-        cookies = [{}] if not cookies else cookies
-
-        self._browser = self.session.browser  # Automatically create an event
-        # loop and browser
-        content = None
-
-        # automatically set reload to False, if example URL is being used
-        if self.url == DEFAULT_URL:
-            reload = False
-
-        if send_cookies_session:
-            cookies = self._convert_cookiesjar_to_render()
-
-        for _i in range(retries):
-            if not content:
-                try:
-
-                    content, result, page = self.session.loop.run_until_complete(
-                        self._async_render(
-                            url=self.url,
-                            script=script,
-                            sleep=sleep,
-                            wait=wait,
-                            content=self.html,
-                            reload=reload,
-                            scrolldown=scrolldown,
-                            timeout=timeout,
-                            wait_until=wait_until,
-                            keep_page=keep_page,
-                            cookies=cookies,
-                        )
-                    )
-                except TypeError:
-                    pass
-            else:
-                break
-
-        if not content:
-            raise MaxRetries("Unable to render the page. Try increasing timeout.")
-
-        html = HTML(
-            url=self.url, html=content.encode(DEFAULT_ENCODING), default_encoding=DEFAULT_ENCODING
+        # Set up browser if needed
+        self.browser = self.session.browser  # Automatically create an event loop and browser
+        
+        # Create configuration object
+        config = RenderConfig(
+            retries=retries,
+            script=script,
+            wait=wait,
+            scrolldown=scrolldown,
+            sleep=sleep,
+            reload=reload,
+            timeout=timeout,
+            wait_until=wait_until,
+            keep_page=keep_page,
+            cookies=cookies,
+            send_cookies_session=send_cookies_session,
         )
-        self.__dict__.update(html.__dict__)
-        self.page = page
-        return result
+        
+        # Use common async logic wrapped in run_until_complete
+        return self.session.loop.run_until_complete(self._render_common_async(config))
 
     async def arender(
         self,
-        retries: int = 8,
+        retries: int = DEFAULT_RENDER_RETRIES,
         script: str = None,
-        wait: float = 0.2,
+        wait: float = DEFAULT_RENDER_WAIT,
         scrolldown: bool = False,
-        sleep: int = 0,
+        sleep: int = DEFAULT_RENDER_SLEEP,
         reload: bool = True,
-        timeout: float | int = 8.0,
+        timeout: float | int = DEFAULT_RENDER_TIMEOUT,
         wait_until: str | list[str] = None,
         keep_page: bool = False,
         cookies: list[dict] | None = None,
         send_cookies_session: bool = False,
     ):
         """Async version of render. Takes same parameters."""
-        cookies = [{}] if not cookies else cookies
-
+        # Set up browser if needed
         self._browser = await self.session.browser
-        content = None
-
-        # automatically set Reload to False, if example URL is being used
-        if self.url == DEFAULT_URL:
-            reload = False
-
-        if send_cookies_session:
-            cookies = self._convert_cookiesjar_to_render()
-
-        for _ in range(retries):
-            if not content:
-                try:
-
-                    content, result, page = await self._async_render(
-                        url=self.url,
-                        script=script,
-                        sleep=sleep,
-                        wait=wait,
-                        content=self.html,
-                        reload=reload,
-                        scrolldown=scrolldown,
-                        timeout=timeout,
-                        wait_until=wait_until,
-                        keep_page=keep_page,
-                        cookies=cookies,
-                    )
-                except TypeError:
-                    pass
-            else:
-                break
-
-        if not content:
-            raise MaxRetries("Unable to render the page. Try increasing timeout.")
-
-        html = HTML(
-            url=self.url, html=content.encode(DEFAULT_ENCODING), default_encoding=DEFAULT_ENCODING
+        
+        # Create configuration object
+        config = RenderConfig(
+            retries=retries,
+            script=script,
+            wait=wait,
+            scrolldown=scrolldown,
+            sleep=sleep,
+            reload=reload,
+            timeout=timeout,
+            wait_until=wait_until,
+            keep_page=keep_page,
+            cookies=cookies,
+            send_cookies_session=send_cookies_session,
         )
-        self.__dict__.update(html.__dict__)
-        self.page = page
-        return result
+        
+        # Use common async logic directly
+        return await self._render_common_async(config)
 
 
 def _get_first_or_list(lst, first=False):

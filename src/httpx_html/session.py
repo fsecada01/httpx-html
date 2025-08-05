@@ -7,10 +7,8 @@ import httpx
 import pyppeteer
 from fake_useragent import UserAgent
 
+from .constants import DEFAULT_ENCODING, DEFAULT_USER_AGENT
 from .parse_ import HTML
-
-DEFAULT_ENCODING = "utf-8"
-DEFAULT_USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) AppleWebKit/603.3.8 (KHTML, like Gecko) Version/10.1.2 Safari/603.3.8"  # noqa
 
 useragent = None
 
@@ -103,15 +101,35 @@ class BaseSession(httpx.Client):
 
     @property
     async def browser(self) -> "pyppeteer.Browser":
+        """
+        Generates pyppeteer.Browser is `_browser` is not set.
+        """
         if not hasattr(self, "_browser"):
             self._browser = await pyppeteer.launch(
-                ignoreHTTPSErrors=not (self.verify), headless=True, args=self.__browser_args
+                ignoreHTTPSErrors=not self.verify, headless=True, args=self.__browser_args
             )
 
         return self._browser
 
 
 class HTMLSession(BaseSession):
+    def __init__(
+        self,
+        *,
+        mock_browser: bool = True,
+        verify: bool = True,
+        browser_args: list | None = None,
+        proxies: Mapping[str, str] | None = None,
+        **kwargs,
+    ):
+        super().__init__(
+            mock_browser=mock_browser,
+            verify=verify,
+            browser_args=browser_args,
+            proxies=proxies,
+            **kwargs,
+        )
+        self.loop = None
 
     @property
     def browser(self) -> "pyppeteer.Browser":
